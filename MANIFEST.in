@@ -1,0 +1,2 @@
+recursive-include *.md *.py
+recursive-include qtools *.md *.py *.png
