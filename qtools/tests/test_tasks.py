@@ -3,6 +3,7 @@
 import time
 import qtools
 
+
 #------------------------------------------------------------------------------
 # Test tasks.
 #------------------------------------------------------------------------------
@@ -15,8 +16,7 @@ class TestTasks(object):
         
     @staticmethod
     def square_done(x, _result=None):
-        # Task callback: check the result
-        assert _result == x * x
+        pass
 
     
     # Operation task
@@ -27,8 +27,12 @@ class TestTasks(object):
         
     @staticmethod
     def operation_done(x, y, coeff=1, _result=None):
-        assert _result == coeff * (x + y)
+        pass
     
+    
+    # Callback-free task
+    def nocallback(self, x):
+        return x
         
 
 #------------------------------------------------------------------------------
@@ -39,13 +43,21 @@ def test_tasksinthread_square():
     tasks = qtools.TasksInThread(TestTasks)
     tasks.square(3)
     tasks.join()
+    assert tasks.get_result() == 9
     
 def test_tasksinthread_operation():
     """Tests a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.operation(3, 4, coeff=2)
     tasks.join()
+    assert tasks.get_result() == 14
 
+def test_tasksinthread_nocallback():
+    tasks = qtools.TasksInThread(TestTasks)
+    tasks.nocallback(3)
+    tasks.join()
+    assert tasks.get_result() == 3
+    
 
 #------------------------------------------------------------------------------
 # Run tasks in external processes.

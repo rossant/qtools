@@ -18,21 +18,68 @@ from qtpy import QtCore
 #------------------------------------------------------------------------------
 FINISHED = '__END__'
 
-__all__ = ['TasksInQThread', 'TasksInThread', 'TasksInProcess']
+__all__ = ['TasksInQThread', 'TasksInThread', 'TasksInProcess',
+           'inthread', 'inqthread']
 
 
 
 #------------------------------------------------------------------------------
-# Tasks In Thread
+# Base Tasks class
 #------------------------------------------------------------------------------
-class TasksInThread(object):
+class ToInstanciate(object):
+    def __init__(self, task_class, *initargs, **initkwargs):
+        self.task_class = task_class
+        self.initargs = initargs
+        self.initkwargs = initkwargs
+    
+    def instanciate(self):
+        return self.task_class(*self.initargs, **self.initkwargs)
+        
+
+def worker_loop(task_obj, qin, qout, impatient=False):
+    """Worker loop that processes jobs send by the master."""
+    # instanciate the task object if needed
+    if isinstance(task_obj, ToInstanciate):
+        task_obj = task_obj.instanciate()
+    while True:
+        r = qin.get()
+        if impatient and not qin.empty():
+            continue
+        if r is None:
+            # tell the client thread to shut down as all tasks have finished
+            qout.put(FINISHED)
+            break
+        method, args, kwargs = r
+        if hasattr(task_obj, method):
+            # evaluate the method of the task object, and get the result
+            result = getattr(task_obj, method)(*args, **kwargs)
+            # send back the task arguments, and the result
+            kwargs_back = kwargs.copy()
+            kwargs_back.update(_result=result)
+            qout.put((method, args, kwargs_back))
+    
+def master_loop(task_class, qin, qout, results=[]):
+    """Master loop that retrieves jobs processed by the worker."""
+    while True:
+        r = qout.get()
+        if r == FINISHED:
+            break
+        # the method that has been called on the worked, with an additional
+        # parameter _result in kwargs, containing the result of the task
+        method, args, kwargs = r
+        results.append((method, args, kwargs))
+        done_name = method + '_done'
+        if hasattr(task_class, done_name):
+            getattr(task_class, done_name)(*args, **kwargs)
+
+
+class TasksBase(object):
     """Implements a queue containing jobs (Python methods of a base class
     specified in `cls`)."""
     def __init__(self, cls, *initargs, **initkwargs):
         self._qin = Queue()
         self._qout = Queue()
-        # self._queue = Queue()
-        # self._results = []
+        self.results = []
         # If impatient, the queue will always process only the last tasks
         # and not the intermediary ones.
         self.impatient = initkwargs.pop('impatient', None)
@@ -40,79 +87,66 @@ class TasksInThread(object):
         self.initargs, self.initkwargs = initargs, initkwargs
         # create the underlying task object
         self.task_class = cls
-        self.task_obj = cls(*self.initargs, **self.initkwargs)
-        # start the worker thread
+        self.instanciate_task()
         self.start()
         
+        
+    # Methods to override
+    # -------------------
+    def instanciate_task(self):
+        """Instanciate the task self.task_obj.
+        
+        This object can be a ToInstanciate instance if the task needs
+        to be instanciated in a separated thread or process.
+        
+        """
+        pass
+    
     def start(self):
-        """Start the worker thread."""
-        self._thread_in = Thread(target=self._start)
-        self._thread_in.daemon = True
-        self._thread_in.start()
-        # start the client thread that processes the results sent back
-        # from the worker thread
-        self._thread_out = Thread(target=self._retrieve)
-        self._thread_out.daemon = True
-        self._thread_out.start()
+        pass
+    
+    def start_worker(self):
+        """Start the worker thread or process."""
+        pass
+        
+    def start_master(self):
+        """Start the master thread, used to retrieve the results."""
+        pass
         
     def join(self):
-        """Order to stop the queue as soon as all tasks have finished."""
-        self._qin.put(None)
-        self._thread_in.join()
-        self._thread_out.join()
+        """Stop the worker and master as soon as all tasks have finished."""
+        pass
     
+    
+    # Public methods
+    # --------------
+    def get_result(self, index=-1):
+        return self.results[index][2]['_result']
+    
+    
+    # Internal methods
+    # ----------------
     def _start(self):
-        """Worker thread main function."""
-        # while True:
-            # r = self._qin.get()
-            # # only process the last item
-            # if self.impatient and not self._qin.empty():
-                # continue
-            # if r is None:
-                # # tell the client thread to shut down as all tasks have finished
-                # self._qout.put(FINISHED)
-                # break
-            # fun, args, kwargs = r
-            # getattr(self.task_obj, fun)(*args, **kwargs)
-            # obj = taskcls(*initargs, **initkwargs)
-        while True:
-            r = self._qin.get()
-            if self.impatient and not self._qin.empty():
-                continue
-            if r is None:
-                # tell the client thread to shut down as all tasks have finished
-                self._qout.put(FINISHED)
-                break
-            method, args, kwargs = r
-            if hasattr(self.task_obj, method):
-                # evaluate the method of the task object, and get the result
-                result = getattr(self.task_obj, method)(*args, **kwargs)
-                # send back the task arguments, and the result
-                kwargs_back = kwargs.copy()
-                kwargs_back.update(_result=result)
-                self._qout.put((method, args, kwargs_back))
+        """Worker main function."""
+        worker_loop(self.task_obj, self._qin, self._qout, self.impatient)
 
-    def _put(self, fun, *arg, **kwargs):
-        """Put a function to process on the queue."""
-        # print fun
-        self._qin.put((fun, arg, kwargs))
-        # print "hey"
+    def _start_thread(self, fun, daemon=True):
+        _thread = Thread(target=fun)
+        _thread.daemon = daemon
+        _thread.start()
+        return _thread
         
     def _retrieve(self):
-        # call done_callback for each finished result
-        while True:
-            r = self._qout.get()
-            if r == FINISHED:
-                break
-            # the method that has been called on the worked, with an additional
-            # parameter _result in kwargs, containing the result of the task
-            method, args, kwargs = r
-            done_name = method + '_done'
-            getattr(self.task_class, done_name)(*args, **kwargs)
+        """Master main function."""
+        master_loop(self.task_class, self._qin, self._qout, self.results)
+        
+    def _put(self, fun, *arg, **kwargs):
+        """Put a function to process on the queue."""
+        self._qin.put((fun, arg, kwargs))
         
     def __getattr__(self, name):
-        if hasattr(self.task_obj, name):
-            v = getattr(self.task_obj, name)
+        if hasattr(self.task_class, name):
+            v = getattr(self.task_class, name)
             # wrap the task object's method in the Job Queue so that it 
             # is pushed in the queue instead of executed immediately
             if inspect.ismethod(v):
@@ -121,6 +155,34 @@ class TasksInThread(object):
             else:
                 return v
 
+
+
+#------------------------------------------------------------------------------
+# Tasks In Thread
+#------------------------------------------------------------------------------
+class TasksInThread(TasksBase):
+    """Implements a queue containing jobs (Python methods of a base class
+    specified in `cls`)."""
+    def instanciate_task(self):
+        self.task_obj = self.task_class(*self.initargs, **self.initkwargs)
+        
+    def start(self):
+        self.start_worker()
+        self.start_master()
+    
+    def start_worker(self):
+        """Start the worker thread or process."""
+        self._thread_worker = self._start_thread(self._start)
+        
+    def start_master(self):
+        """Start the master thread, used to retrieve the results."""
+        self._thread_master = self._start_thread(self._retrieve)
+        
+    def join(self):
+        """Stop the worker and master as soon as all tasks have finished."""
+        self._qin.put(None)
+        self._thread_worker.join()
+        self._thread_master.join()
 
 def inthread(cls):
     class MyTasksInThread(TasksInThread):
@@ -145,7 +207,7 @@ class TasksInQThread(TasksInThread):
                 self.wait()
                 
         self._thread = TasksInThread()
-        self._thread.start(QtCore.QThread.LowPriority)
+        self._thread.start()#QtCore.QThread.LowPriority)
 
 
 def inqthread(cls):
@@ -158,76 +220,29 @@ def inqthread(cls):
 #------------------------------------------------------------------------------
 # Tasks in Process
 #------------------------------------------------------------------------------
-def _run(taskcls, initargs, initkwargs, qin, qout):
-    obj = taskcls(*initargs, **initkwargs)
-    while True:
-        p = qin.get()
-        if p is None:
-            # tell the client thread to shut down as all tasks have finished
-            qout.put(FINISHED)
-            break
-        method, args, kwargs = p
-        if hasattr(obj, method):
-            # evaluate the method of the task object, and get the result
-            result = getattr(obj, method)(*args, **kwargs)
-            # send back the task arguments, and the result
-            kwargs_back = kwargs.copy()
-            kwargs_back.update(_result=result)
-            qout.put((method, args, kwargs_back))
-
-
-class TasksInProcess(object):
+class TasksInProcess(TasksBase):
     """Implements a queue containing jobs (Python methods of a base class
     specified in `cls`)."""
-    def __init__(self, cls, *initargs, **initkwargs):
-        # self._results = []
-        # If impatient, the queue will always process only the last tasks
-        # and not the intermediary ones.
-        self.impatient = initkwargs.pop('impatient', None)
-        # arguments of the task class constructor
-        self.initargs, self.initkwargs = initargs, initkwargs
-        # create the underlying task object
-        self.task_class = cls
-        # start the worker thread
-        self.start()
-        
+    def instanciate_task(self):
+        self.task_obj = ToInstanciate(self.task_class, *self.initargs, **self.initkwargs)
+    
     def start(self):
-        """Start the worker thread."""
-        self._qin = Queue()
-        self._qout = Queue()
-        self._process = Process(target=_run, args=(self.task_class, 
-            self.initargs, self.initkwargs, self._qin, self._qout,))
-        self._process.start()
-        # start the client thread that processes the results sent back
-        # from the worker process
-        self._thread = Thread(target=self._retrieve)
-        self._thread.daemon = True
-        self._thread.start()
+        self.start_worker()
+        self.start_master()
+    
+    def start_worker(self):
+        """Start the worker thread or process."""
+        self._process_worker = Process(target=worker_loop, args=(self.task_obj, 
+            self._qin, self._qout, self.impatient))
+        self._process_worker.start()
+        
+    def start_master(self):
+        """Start the master thread, used to retrieve the results."""
+        self._thread_master = self._start_thread(self._retrieve)
         
     def join(self):
-        """Order to stop the queue as soon as all tasks have finished."""
+        """Stop the worker and master as soon as all tasks have finished."""
         self._qin.put(None)
-        self._process.join()
-        self._thread.join()
-
-    def _put(self, fun, *args, **kwargs):
-        """Put a function to process on the queue."""
-        self._qin.put((fun, args, kwargs))
-        
-    def _retrieve(self):
-        # call done_callback for each finished result
-        while True:
-            r = self._qout.get()
-            if r == FINISHED:
-                break
-            # the method that has been called on the worked, with an additional
-            # parameter _result in kwargs, containing the result of the task
-            method, args, kwargs = r
-            done_name = method + '_done'
-            getattr(self.task_class, done_name)(*args, **kwargs)
-        
-    def __getattr__(self, name):
-        if hasattr(self.task_class, name):
-            return lambda *args, **kwargs: self._put(name, *args, **kwargs)
-
-
+        self._process_worker.join()
+        self._thread_master.join()
+    
