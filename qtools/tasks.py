@@ -30,7 +30,7 @@ except ImportError:
         fun = getattr(obj, method_name)
         _thread = Thread(target=fun)
         _thread.start()
-        return thread
+        return _thread
 
 
 #------------------------------------------------------------------------------
