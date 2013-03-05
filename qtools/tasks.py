@@ -221,23 +221,11 @@ def inthread(cls):
 #------------------------------------------------------------------------------
 class TasksInQThread(TasksInThread):
     """Job Queue supporting Qt signals and slots."""
-    def _start_qthread(self, method_name):
-        jobself = self
-        class MyQThread(QThread):
-            def run(self):
-                getattr(jobself, method_name)()
-                
-            def join(self):
-                self.wait()
-        qthread = MyQThread()
-        qthread.start(QThread.LowPriority)
-        return qthread
-
     def start_worker(self):
-        self._thread_worker = self._start_qthread('_start')
+        self._thread_worker = _start_qthread(self, '_start')
 
     def start_master(self):
-        self._thread_master = self._start_qthread('_retrieve')
+        self._thread_master = _start_qthread(self, '_retrieve')
         
 
 def inqthread(cls):
