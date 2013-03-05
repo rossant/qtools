@@ -62,13 +62,16 @@ def worker_loop(task_obj, qin, qout, impatient=False):
     if isinstance(task_obj, ToInstanciate):
         task_obj = task_obj.instanciate()
     while True:
+        # import threading
+        # print threading.current_thread().ident, "waiting"
         r = qin.get()
-        if impatient and not qin.empty():
-            continue
-        if r is None:
+        # print threading.current_thread().ident, "got", r
+        if r == FINISHED:
             # tell the client thread to shut down as all tasks have finished
             qout.put(FINISHED)
             break
+        if impatient and not qin.empty():
+            continue
         method, args, kwargs = r
         if hasattr(task_obj, method):
             # evaluate the method of the task object, and get the result
@@ -165,8 +168,8 @@ class TasksBase(object):
         self._qin.put((fun, arg, kwargs))
         
     def __getattr__(self, name):
-        if hasattr(self.task_class, name):
-            v = getattr(self.task_class, name)
+        if hasattr(self.task_obj, name):
+            v = getattr(self.task_obj, name)
             # wrap the task object's method in the Job Queue so that it 
             # is pushed in the queue instead of executed immediately
             if inspect.ismethod(v):
@@ -174,7 +177,8 @@ class TasksBase(object):
             # if the attribute is a task object's property, just return it
             else:
                 return v
-
+        raise AttributeError("'{0:s}' is not an attribute of '{1:s}'".format(
+            name, self))
 
 
 #------------------------------------------------------------------------------
@@ -200,8 +204,9 @@ class TasksInThread(TasksBase):
         
     def join(self):
         """Stop the worker and master as soon as all tasks have finished."""
-        self._qin.put(None)
+        self._qin.put(FINISHED)
         self._thread_worker.join()
+        # self._qout.put(FINISHED)
         self._thread_master.join()
 
 def inthread(cls):
@@ -267,7 +272,25 @@ class TasksInProcess(TasksBase):
         
     def join(self):
         """Stop the worker and master as soon as all tasks have finished."""
-        self._qin.put(None)
+        self._qin.put(FINISHED)
         self._process_worker.join()
+        # self._qout.put(FINISHED)
         self._thread_master.join()
     
+    def __getattr__(self, name):
+        # execute a method on the task object remotely
+        if hasattr(self.task_class, name):
+            v = getattr(self.task_class, name)
+            # wrap the task object's method in the Job Queue so that it 
+            # is pushed in the queue instead of executed immediately
+            if inspect.ismethod(v):
+                return lambda *args, **kwargs: self._put(name, *args, **kwargs)
+            # if the attribute is a task object's property, just return it
+            else:
+                return v
+        # or, if the requested name is a task object attribute, try obtaining
+        # remotely
+        else:
+            return self._put('__getattr__', name)[2]['_result']
+        # raise AttributeError("'{0:s}' is not an attribute of '{1:s}'".format(
+            # name, self))

@@ -31,9 +31,21 @@ class TestTasks(object):
     
     
     # Callback-free task
+    # ------------------
     def nocallback(self, x):
         return x
 
+    
+# Task with decorator and state
+# -----------------------------
+@qtools.inthread
+class TestTasksWithState(object):
+    def __init__(self, x):
+        self.x = x
+        
+    def square(self):
+        self.y = self.x ** 2
+        
 
 #------------------------------------------------------------------------------
 # Run task in external threads.
@@ -66,6 +78,15 @@ def test_tasksinqthread_square():
     tasks.join()
     assert tasks.get_result() == 9
     
+    
+#------------------------------------------------------------------------------
+# Run task with decorator in external threads.
+#------------------------------------------------------------------------------
+def test_tasksinthread_decorator_square():
+    tasks = TestTasksWithState(3)
+    tasks.square()
+    tasks.join()
+    assert tasks.y == 9
 
 
 #------------------------------------------------------------------------------
