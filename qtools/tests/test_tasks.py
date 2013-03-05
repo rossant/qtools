@@ -33,44 +33,53 @@ class TestTasks(object):
     # Callback-free task
     def nocallback(self, x):
         return x
-        
+
 
 #------------------------------------------------------------------------------
 # Run task in external threads.
 #------------------------------------------------------------------------------
 def test_tasksinthread_square():
-    """Tests a simple task in an external thread."""
+    """Test a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.square(3)
     tasks.join()
     assert tasks.get_result() == 9
     
 def test_tasksinthread_operation():
-    """Tests a simple task in an external thread."""
+    """Test a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.operation(3, 4, coeff=2)
     tasks.join()
     assert tasks.get_result() == 14
 
 def test_tasksinthread_nocallback():
+    """Test a task without callback."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.nocallback(3)
     tasks.join()
     assert tasks.get_result() == 3
+
+def test_tasksinqthread_square():
+    """Test a Qt task."""
+    tasks = qtools.TasksInQThread(TestTasks)
+    tasks.square(3)
+    tasks.join()
+    assert tasks.get_result() == 9
     
+
 
 #------------------------------------------------------------------------------
 # Run tasks in external processes.
 #------------------------------------------------------------------------------
 def test_tasksinprocess_square():
-    """Tests a simple task in an external process."""
+    """Test a simple task in an external process."""
         
     tasks = qtools.TasksInProcess(TestTasks)
     tasks.square(3)
     tasks.join()
     
 def test_tasksinprocess_operation():
-    """Tests a simple task in an external thread."""
+    """Test a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.operation(3, 4, coeff=2)
     tasks.join()

@@ -10,7 +10,27 @@ import inspect
 from Queue import Queue
 from threading import Thread
 from multiprocessing import Process, Queue
-from qtpy import QtCore
+# Need to handle threads in a particular way with Qt.
+try:
+    from qtpy.QtCore import QThread
+    def _start_qthread(obj, method_name):
+        """Start a QThread."""
+        class MyQThread(QThread):
+            def run(self):
+                getattr(obj, method_name)()
+            def join(self):
+                self.wait()
+        qthread = MyQThread()
+        qthread.start(QThread.LowPriority)
+        return qthread
+# Or use standard threads if Qt is not available.
+except ImportError:
+    def _start_qthread(obj, method_name):
+        """Start a Thread normally."""
+        fun = getattr(obj, method_name)
+        _thread = Thread(target=fun)
+        _thread.start()
+        return thread
 
 
 #------------------------------------------------------------------------------
@@ -196,19 +216,24 @@ def inthread(cls):
 #------------------------------------------------------------------------------
 class TasksInQThread(TasksInThread):
     """Job Queue supporting Qt signals and slots."""
-    def start(self):
+    def _start_qthread(self, method_name):
         jobself = self
-        
-        class TasksInThread(QtCore.QThread):
+        class MyQThread(QThread):
             def run(self):
-                jobself._start()
+                getattr(jobself, method_name)()
                 
             def join(self):
                 self.wait()
-                
-        self._thread = TasksInThread()
-        self._thread.start()#QtCore.QThread.LowPriority)
+        qthread = MyQThread()
+        qthread.start(QThread.LowPriority)
+        return qthread
 
+    def start_worker(self):
+        self._thread_worker = self._start_qthread('_start')
+
+    def start_master(self):
+        self._thread_master = self._start_qthread('_retrieve')
+        
 
 def inqthread(cls):
     class MyTasksInThread(TasksInQThread):
