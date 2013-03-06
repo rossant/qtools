@@ -8,6 +8,11 @@ import qtools
 # Test tasks.
 #------------------------------------------------------------------------------
 class TestTasks(object):
+    # Constructor
+    # -----------
+    def __init__(self, kwarg0=None):
+        self.kwarg0 = kwarg0
+    
     # Square task
     # -----------
     def square(self, x):
@@ -45,20 +50,18 @@ class TestTasksWithState(object):
         
     def square(self):
         self.y = self.x ** 2
-        
+
 
 #------------------------------------------------------------------------------
 # Run task in external threads.
 #------------------------------------------------------------------------------
 def test_tasksinthread_square():
-    """Test a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.square(3)
     tasks.join()
     assert tasks.get_result() == 9
     
 def test_tasksinthread_operation():
-    """Test a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.operation(3, 4, coeff=2)
     tasks.join()
@@ -71,14 +74,7 @@ def test_tasksinthread_nocallback():
     tasks.join()
     assert tasks.get_result() == 3
 
-def test_tasksinqthread_square():
-    """Test a Qt task."""
-    tasks = qtools.TasksInQThread(TestTasks)
-    tasks.square(3)
-    tasks.join()
-    assert tasks.get_result() == 9
-    
-    
+
 #------------------------------------------------------------------------------
 # Run task with decorator in external threads.
 #------------------------------------------------------------------------------
@@ -93,17 +89,25 @@ def test_tasksinthread_decorator_square():
 # Run tasks in external processes.
 #------------------------------------------------------------------------------
 def test_tasksinprocess_square():
-    """Test a simple task in an external process."""
-        
     tasks = qtools.TasksInProcess(TestTasks)
     tasks.square(3)
     tasks.join()
     
 def test_tasksinprocess_operation():
-    """Test a simple task in an external thread."""
     tasks = qtools.TasksInThread(TestTasks)
     tasks.operation(3, 4, coeff=2)
     tasks.join()
     
+def test_tasksinprocess_constructor():
+    tasks = qtools.inprocess(TestTasks)(7)
+    tasks.operation(3, 4, coeff=2)
+    tasks.join()
+    
+def test_tasksinprocess_state():
+    tasks = qtools.inprocess(TestTasks)(7)
+    tasks.operation(3, 4, coeff=2)
+    x = tasks.kwarg0
+    assert x == 7
+    tasks.join()
     
 
