@@ -7,6 +7,7 @@ external threads or processes, with a simple API.
 #------------------------------------------------------------------------------
 import time
 import inspect
+import logging
 from Queue import Queue as tQueue
 from threading import Thread
 from multiprocessing import Process, Queue as pQueue
@@ -85,6 +86,7 @@ def worker_loop(task_obj, qin, qout, qout_sync, impatient=False):
             try:
                 result = getattr(task_obj, method)(*args, **kwargs)
             except Exception as e:
+                print("An exception occurred: {0:s}.".format(e))
                 result = e
             # send back the task arguments, and the result
             kwargs_back = kwargs.copy()
@@ -165,7 +167,10 @@ class TasksBase(object):
     # Public methods
     # --------------
     def get_result(self, index=-1):
-        return self.results[index][2]['_result']
+        result = self.results[index][2]['_result']
+        if isinstance(result, Exception):
+            raise result
+        return result
     
     
     # Internal methods

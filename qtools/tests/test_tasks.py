@@ -1,6 +1,7 @@
 """Test the tasks module.
 """
 import time
+from nose.tools import raises
 import qtools
 
 
@@ -41,6 +42,12 @@ class TestTasks(object):
         return x
 
     
+    # Method raising an exception
+    # ---------------------------
+    def exception(self):
+        raise TypeError("This is an exception.")
+    
+    
 # Task with decorator and state
 # -----------------------------
 @qtools.inthread
@@ -73,6 +80,16 @@ def test_tasksinthread_nocallback():
     tasks.nocallback(3)
     tasks.join()
     assert tasks.get_result() == 3
+
+@raises(TypeError)
+def test_taskinthread_exception():
+    tasks = qtools.TasksInThread(TestTasks)
+    # an exception happens in the thread, there's just a warning message 
+    # displayed, the worker thread does not die
+    tasks.exception()
+    tasks.join()
+    # now this raises an exception on the client
+    tasks.get_result()
 
 
 #------------------------------------------------------------------------------
