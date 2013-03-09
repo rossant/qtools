@@ -18,7 +18,7 @@ if __name__ == '__main__':
         author='Cyrille Rossant',
         author_email='rossant@github',
         packages=['qtools',
-                  # 'qtools.qtpy',
+                  'qtools.qtpy',
                   'qtools.tests',
                   ],
         package_data={
