@@ -44,6 +44,7 @@ except ImportError:
 FINISHED = '__END__'
 
 __all__ = [
+           'TasksBase',
            'TasksInThread',
            'TasksInProcess',
            'inthread',
