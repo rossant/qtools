@@ -278,9 +278,9 @@ class TasksInProcess(TasksBase):
     def join(self):
         """Stop the worker and master as soon as all tasks have finished."""
         self._qin.put(FINISHED)
-        self._process_worker.join()
-        # self._qout.put(FINISHED)
         self._thread_master.join()
+        self._process_worker.terminate()
+        self._process_worker.join()
     
     def __getattr__(self, name):
         # execute a method on the task object remotely
