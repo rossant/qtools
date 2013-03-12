@@ -6,6 +6,7 @@ external threads or processes, with a simple API.
 # Imports
 #------------------------------------------------------------------------------
 import time
+import traceback
 import inspect
 import logging
 from Queue import Queue as tQueue
@@ -87,7 +88,8 @@ def worker_loop(task_obj, qin, qout, qout_sync, impatient=False):
             try:
                 result = getattr(task_obj, method)(*args, **kwargs)
             except Exception as e:
-                print("An exception occurred: {0:s}.".format(e))
+                msg = traceback.format_exc()
+                print("An exception occurred: {0:s}.".format(msg))
                 result = e
             # send back the task arguments, and the result
             kwargs_back = kwargs.copy()
