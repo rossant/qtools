@@ -1,5 +1,7 @@
-from qtools.qtpy.QtCore import QObject
-
+try:
+    from qtools.qtpy.QtCore import QObject
+except ImportError:
+    QObject = object
 class GarbageCollector(QObject):
 
     '''
