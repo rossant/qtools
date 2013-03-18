@@ -1,5 +1,7 @@
+import gc
 try:
     from qtools.qtpy.QtCore import QObject
+    from qtools.qtpy.QtCore import QTimer
 except ImportError:
     QObject = object
 class GarbageCollector(QObject):
