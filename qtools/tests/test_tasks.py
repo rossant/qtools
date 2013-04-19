@@ -46,7 +46,12 @@ class TestTasks(object):
     # ---------------------------
     def exception(self):
         raise TypeError("This is an exception.")
-    
+
+
+class LongTask(object):
+    def long(self):
+        time.sleep(5)
+
     
 # Task with decorator and state
 # -----------------------------
@@ -127,4 +132,8 @@ def test_tasksinprocess_state():
     assert x == 7
     tasks.join()
     
+def test_tasksinprocess_long():
+    tasks = qtools.TasksInProcess(LongTask)
+    tasks.long()
+    tasks.terminate()
 

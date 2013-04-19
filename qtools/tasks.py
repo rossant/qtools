@@ -284,6 +284,13 @@ class TasksInProcess(TasksBase):
         self._process_worker.terminate()
         self._process_worker.join()
     
+    def terminate(self):
+        self._process_worker.terminate()
+        self._process_worker.join()
+        self._qout.put(FINISHED)
+        self._thread_master.join()
+        
+    
     def __getattr__(self, name):
         # execute a method on the task object remotely
         if hasattr(self.task_class, name):
