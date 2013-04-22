@@ -102,8 +102,10 @@ def worker_loop(task_obj, qin, qout, qout_sync, impatient=False):
                 q = qout
             q.put((method, args, kwargs_back))
     
-def master_loop(task_class, qin, qout, results=[]):
+def master_loop(task_class, qin, qout, results=[], task_obj=None):
     """Master loop that retrieves jobs processed by the worker."""
+    if task_obj is None:
+        task_obj = task_class
     while True:
         r = qout.get()
         if r == FINISHED:
@@ -114,7 +116,7 @@ def master_loop(task_class, qin, qout, results=[]):
         results.append((method, args, kwargs))
         done_name = method + '_done'
         if hasattr(task_class, done_name):
-            getattr(task_class, done_name)(*args, **kwargs)
+            getattr(task_obj, done_name)(*args, **kwargs)
 
 
 class TasksBase(object):
@@ -262,6 +264,9 @@ class TasksInProcess(TasksBase):
         
     def instanciate_task(self):
         self.task_obj = ToInstanciate(self.task_class, *self.initargs, **self.initkwargs)
+        # This object resides on the master process.
+        self.task_obj_master = self.task_class(*self.initargs,
+            **self.initkwargs)
     
     def start(self):
         self.start_worker()
@@ -272,7 +277,12 @@ class TasksInProcess(TasksBase):
         self._process_worker = Process(target=worker_loop, args=(self.task_obj, 
             self._qin, self._qout, self._qout_sync, self.impatient))
         self._process_worker.start()
-        
+    
+    def _retrieve(self):
+        """Master main function."""
+        master_loop(self.task_class, self._qin, self._qout, self.results,
+            task_obj=self.task_obj_master)
+            
     def start_master(self):
         """Start the master thread, used to retrieve the results."""
         self._thread_master = _start_thread(self._retrieve)
@@ -289,12 +299,13 @@ class TasksInProcess(TasksBase):
         self._process_worker.join()
         self._qout.put(FINISHED)
         self._thread_master.join()
-        
     
     def __getattr__(self, name):
-        # execute a method on the task object remotely
-        if hasattr(self.task_class, name):
-            v = getattr(self.task_class, name)
+        # execute a method on the task object locally
+        task_obj = self.task_obj_master
+        # if hasattr(self.task_class, name):
+        if hasattr(task_obj, name):
+            v = getattr(task_obj, name)
             # wrap the task object's method in the Job Queue so that it 
             # is pushed in the queue instead of executed immediately
             if inspect.ismethod(v):
