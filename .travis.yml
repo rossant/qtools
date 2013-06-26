@@ -4,7 +4,7 @@ python:
 # command to install dependencies, e.g. pip install -r requirements.txt --use-mirrors
 #  - pip install -r requirements.txt --use-mirrors
 before_install:
- - sudo apt-get install -qq python-qt
+ - sudo apt-get install -qq python-qt4
 install:
   - sudo rm -rf /dev/shm && sudo ln -s /run/shm /dev/shm
   - python setup.py install -q
