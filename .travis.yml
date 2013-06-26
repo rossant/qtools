@@ -12,4 +12,7 @@ virtualenv:
   system_site_packages: true
 
 # command to run tests, e.g. python setup.py test
-script: python setup.py nosetests
+script: 
+  - Xvfb :1 -screen 0 1024x768x16 -nolisten inet6
+  - export DISPLAY=localhost:1.0
+  - python setup.py nosetests
