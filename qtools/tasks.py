@@ -10,18 +10,16 @@ import traceback
 import inspect
 import logging
 from Queue import Queue as tQueue
+from Queue import Empty
 from threading import Thread
 from multiprocessing import Process, Queue as pQueue
 # Need to handle threads in a particular way with Qt.
 try:
-    from qtpy.QtCore import QThread
-    # def _start_thread(obj, method_name):
+    from qtpy.QtCore import QThread, QTimer, QObject
     def _start_thread(fun, *args, **kwargs):
         """Start a QThread."""
         class MyQThread(QThread):
             def run(self):
-                # fun = getattr(obj, method_name)
-                # getattr(obj, method_name)()
                 fun(*args, **kwargs)
             def join(self):
                 self.wait()
@@ -30,10 +28,8 @@ try:
         return qthread
 # Or use standard threads if Qt is not available.
 except ImportError:
-    # def _start_thread(obj, method_name):
     def _start_thread(fun, *args, **kwargs):
         """Start a Thread normally."""
-        # fun = getattr(obj, method_name)
         _thread = Thread(target=fun, args=args, kwargs=kwargs)
         _thread.start()
         return _thread
@@ -43,6 +39,7 @@ except ImportError:
 # Global variables
 #------------------------------------------------------------------------------
 FINISHED = '__END__'
+TIMER_MASTER_DELAY = .01
 
 __all__ = [
            'TasksBase',
@@ -117,16 +114,36 @@ def master_loop(task_class, qin, qout, results=[], task_obj=None):
         done_name = method + '_done'
         if hasattr(task_class, done_name):
             getattr(task_obj, done_name)(*args, **kwargs)
+    
+def master_iteration(task_class, qin, qout, results=[], task_obj=None):
+    """Master loop that retrieves jobs processed by the worker."""
+    try:
+        r = qout.get_nowait()
+    except Empty:
+        return
+    if r == FINISHED:
+        return
+    if task_obj is None:
+        task_obj = task_class
+    # the method that has been called on the worked, with an additional
+    # parameter _result in kwargs, containing the result of the task
+    method, args, kwargs = r
+    results.append((method, args, kwargs))
+    done_name = method + '_done'
+    if hasattr(task_class, done_name):
+        getattr(task_obj, done_name)(*args, **kwargs)
 
 
-class TasksBase(object):
+class TasksBase(QObject):
     """Implements a queue containing jobs (Python methods of a base class
     specified in `cls`)."""
     def __init__(self, cls, *initargs, **initkwargs):
+        super(TasksBase, self).__init__(initkwargs.pop('parent', None))
         self.results = []
         # If impatient, the queue will always process only the last tasks
         # and not the intermediary ones.
         self.impatient = initkwargs.pop('impatient', None)
+        self.use_master_thread = initkwargs.pop('use_master_thread', True)
         # arguments of the task class constructor
         self.initargs, self.initkwargs = initargs, initkwargs
         # create the underlying task object
@@ -187,7 +204,10 @@ class TasksBase(object):
 
     def _retrieve(self):
         """Master main function."""
-        master_loop(self.task_class, self._qin, self._qout, self.results)
+        if self.use_master_thread:
+            master_loop(self.task_class, self._qin, self._qout, self.results)
+        else:
+            master_iteration(self.task_class, self._qin, self._qout, self.results)
         
     def _put(self, fun, *arg, **kwargs):
         """Put a function to process on the queue."""
@@ -225,6 +245,15 @@ class TasksInThread(TasksBase):
     def instanciate_task(self):
         self.task_obj = self.task_class(*self.initargs, **self.initkwargs)
         
+    def _retrieve(self):
+        """Master main function."""
+        if self.use_master_thread:
+            master_loop(self.task_class, self._qin, self._qout, self.results,
+                task_obj=self.task_obj)
+        else:
+            master_iteration(self.task_class, self._qin, self._qout, 
+                self.results, task_obj=self.task_obj)
+        
     def start(self):
         self.start_worker()
         self.start_master()
@@ -235,15 +264,42 @@ class TasksInThread(TasksBase):
         
     def start_master(self):
         """Start the master thread, used to retrieve the results."""
-        self._thread_master = _start_thread(self._retrieve)
+        if self.use_master_thread:
+            self._thread_master = _start_thread(self._retrieve)
+        else:
+            self._timer_master = QTimer(self)
+            self._timer_master.setInterval(int(TIMER_MASTER_DELAY * 1000))
+            self._timer_master.timeout.connect(self._retrieve)
+            self._timer_master.start()
         
     def join(self):
         """Stop the worker and master as soon as all tasks have finished."""
         self._qin.put(FINISHED)
         self._thread_worker.join()
-        # self._qout.put(FINISHED)
-        self._thread_master.join()
-
+        if self.use_master_thread:
+            self._thread_master.join()
+        else:
+            self._timer_master.stop()
+                
+    def __getattr__(self, name):
+        # execute a method on the task object locally
+        task_obj = self.task_obj
+        # if hasattr(self.task_class, name):
+        if hasattr(task_obj, name):
+            v = getattr(task_obj, name)
+            # wrap the task object's method in the Job Queue so that it 
+            # is pushed in the queue instead of executed immediately
+            if inspect.ismethod(v):
+                return lambda *args, **kwargs: self._put(name, *args, **kwargs)
+            # if the attribute is a task object's property, just return it
+            else:
+                return v
+        # or, if the requested name is a task object attribute, try obtaining
+        # remotely
+        else:
+            result = self._put('__getattribute__', name, _sync=True)
+            return result[2]['_result']
+            
 def inthread(cls):
     class MyTasksInThread(TasksInThread):
         def __init__(self, *initargs, **initkwargs):
@@ -280,17 +336,30 @@ class TasksInProcess(TasksBase):
     
     def _retrieve(self):
         """Master main function."""
-        master_loop(self.task_class, self._qin, self._qout, self.results,
-            task_obj=self.task_obj_master)
+        if self.use_master_thread:
+            master_loop(self.task_class, self._qin, self._qout, self.results,
+                task_obj=self.task_obj_master)
+        else:
+            master_iteration(self.task_class, self._qin, self._qout, self.results,
+                task_obj=self.task_obj_master)
             
     def start_master(self):
         """Start the master thread, used to retrieve the results."""
-        self._thread_master = _start_thread(self._retrieve)
+        if self.use_master_thread:
+            self._thread_master = _start_thread(self._retrieve)
+        else:
+            self._timer_master = QTimer(self)
+            self._timer_master.setInterval(int(TIMER_MASTER_DELAY * 1000))
+            self._timer_master.timeout.connect(self._retrieve)
+            self._timer_master.start()
         
     def join(self):
         """Stop the worker and master as soon as all tasks have finished."""
         self._qin.put(FINISHED)
-        self._thread_master.join()
+        if self.use_master_thread:
+            self._thread_master.join()
+        else:
+            self._timer_master.stop()
         self._process_worker.terminate()
         self._process_worker.join()
     
@@ -298,7 +367,10 @@ class TasksInProcess(TasksBase):
         self._process_worker.terminate()
         self._process_worker.join()
         self._qout.put(FINISHED)
-        self._thread_master.join()
+        if self.use_master_thread:
+            self._thread_master.join()
+        else:
+            self._timer_master.stop()
     
     def __getattr__(self, name):
         # execute a method on the task object locally
