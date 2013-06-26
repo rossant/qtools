@@ -13,6 +13,4 @@ virtualenv:
 
 # command to run tests, e.g. python setup.py test
 script: 
-  - Xvfb :1 -screen 0 1024x768x16 -nolisten inet6
-  - export DISPLAY=localhost:1.0
-  - python setup.py nosetests
+  - xvfb-run python setup.py nosetests
