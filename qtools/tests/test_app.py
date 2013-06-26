@@ -26,7 +26,7 @@ def get_application():
     app_created = False
     app = QtCore.QCoreApplication.instance()
     if app is None:
-        app = QtGui.QApplication(sys.argv)
+        app = QtGui.QCoreApplication(sys.argv)
         app_created = True
     return app, app_created
 

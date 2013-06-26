@@ -13,4 +13,4 @@ virtualenv:
 
 # command to run tests, e.g. python setup.py test
 script: 
-  - xvfb-run python setup.py nosetests
+  - python setup.py nosetests
