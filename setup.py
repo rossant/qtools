@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
     setup(
         name='qtools',
-        version='0.1.0',  # alpha pre-release
+        version='0.1.2',  # alpha pre-release
         author='Cyrille Rossant',
         author_email='rossant@github',
         packages=['qtools',
