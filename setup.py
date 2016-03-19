@@ -1,6 +1,6 @@
 import os
 try:
-    from setuptools import setup 
+    from setuptools import setup
 except ImportError:
     from distutils.core import setup
 
@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
     setup(
         name='qtools',
-        version='0.1.0.dev',  # alpha pre-release
+        version='0.1.0',  # alpha pre-release
         author='Cyrille Rossant',
         author_email='rossant@github',
         packages=['qtools',
@@ -31,5 +31,5 @@ if __name__ == '__main__':
         long_description=LONG_DESCRIPTION,
         install_requires=[
         ],
-        test_suite = 'nose.collector',
+        test_suite='nose.collector',
     )
